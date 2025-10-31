@@ -1,9 +1,9 @@
-import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { HomeIcon, UsersIcon, BookOpenIcon, ClipboardListIcon, UploadIcon, BarChartIcon, MenuIcon, UserIcon, LogOutIcon } from 'lucide-react';
 export function Layout() {
   const location = useLocation();
-  const isActive = path => {
+  const navigate = useNavigate();
+  const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
   return <div className="min-h-screen flex flex-col">
@@ -20,7 +20,7 @@ export function Layout() {
               </div>
               <span className="hidden md:inline">Admin</span>
             </div>
-            <button className="p-2 hover:bg-blue-700 rounded-full">
+            <button className="p-2 hover:bg-blue-700 rounded-full" onClick={() => { navigate('/login'); }}>
               <LogOutIcon className="w-5 h-5" />
             </button>
           </div>
