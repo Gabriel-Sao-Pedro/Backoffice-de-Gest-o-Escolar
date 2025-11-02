@@ -1,50 +1,84 @@
-import React, { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, EditIcon, Trash2Icon, DownloadIcon } from 'lucide-react';
-const mockStudents = [{
-  id: 1,
-  nome: 'Ana Silva',
-  cpf: '123.456.789-01',
-  dataNasc: '12/05/2000',
-  celular: '(31) 98888-7777',
-  foto: null
-}, {
-  id: 2,
-  nome: 'Carlos Souza',
-  cpf: '987.654.321-00',
-  dataNasc: '23/08/1999',
-  celular: '(31) 99999-8888',
-  foto: null
-}, {
-  id: 3,
-  nome: 'Maria Santos',
-  cpf: '456.789.123-45',
-  dataNasc: '15/03/2001',
-  celular: '(31) 97777-6666',
-  foto: null
-}];
+import { getStudents, initDb, getCourses, getEnrollments } from '../../services/db';
 export function StudentsList() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [students, setStudents] = useState(getStudents());
+  const [courses, setCourses] = useState(getCourses());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+  // Filtros
+  const [courseDraft, setCourseDraft] = useState<string>('');
+  const [courseFilter, setCourseFilter] = useState<string>('');
+  useEffect(() => {
+    initDb();
+    setStudents(getStudents());
+    setCourses(getCourses());
+  }, []);
+  const filtered = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    let list = students.filter((s) =>
+      s.nome.toLowerCase().includes(q) || s.cpf.toLowerCase().includes(q)
+    );
+    if (courseFilter) {
+      const cId = Number(courseFilter);
+      if (!Number.isNaN(cId)) {
+        const allowed = new Set(
+          getEnrollments()
+            .filter((e) => e.courseId === cId && e.status !== 'Cancelada')
+            .map((e) => e.studentId)
+        );
+        list = list.filter((s) => allowed.has(s.id));
+      }
+    }
+    return list;
+  }, [students, searchTerm, courseFilter]);
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, total);
+  const pageItems = filtered.slice(startIndex, endIndex);
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, courseFilter, pageSize]);
+  const applyFilters = () => {
+    setCourseFilter(courseDraft);
+  };
   const [showFilters, setShowFilters] = useState(false);
   return <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <section className="flex items-center justify-between" aria-labelledby="students-heading">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Alunos</h1>
+          <h1 id="students-heading" className="text-3xl font-bold text-gray-900">Alunos</h1>
           <p className="text-gray-600 mt-1">Gerenciar cadastro de alunos</p>
         </div>
         <Link to="/alunos/novo" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <PlusIcon className="w-5 h-5" />
           Novo Aluno
         </Link>
-      </div>
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      </section>
+      <section className="bg-white rounded-lg shadow-sm border border-gray-200" aria-labelledby="students-table-heading">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
             <div className="flex-1 relative">
               <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input type="search" placeholder="Buscar por nome ou CPF..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" aria-label="Buscar alunos" />
             </div>
-            <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <label htmlFor="pageSizeStudents" className="text-sm text-gray-600">Itens por página</label>
+              <select
+                id="pageSizeStudents"
+                className="px-2 py-1 border border-gray-300 rounded-lg"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+              </select>
+            </div>
+            <button type="button" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors" aria-expanded={showFilters} aria-controls="students-filters">
               <FilterIcon className="w-5 h-5" />
               Filtros
             </button>
@@ -53,15 +87,22 @@ export function StudentsList() {
               Exportar
             </button>
           </div>
-          {showFilters && <div className="mt-4 p-4 bg-gray-50 rounded-lg grid grid-cols-3 gap-4">
+          {showFilters && <div id="students-filters" className="mt-4 p-4 bg-gray-50 rounded-lg grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Curso
                 </label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={courseDraft}
+                  onChange={(e) => setCourseDraft(e.target.value)}
+                >
                   <option value="">Todos os cursos</option>
-                  <option value="mat101">Matemática Básica</option>
-                  <option value="port101">Português</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -76,41 +117,42 @@ export function StudentsList() {
                 </select>
               </div>
               <div className="flex items-end">
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <button type="button" onClick={applyFilters} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                   Aplicar Filtros
                 </button>
               </div>
             </div>}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full" aria-describedby="students-table-heading">
+            <caption id="students-table-heading" className="sr-only">Lista de alunos com foto, ID, nome, CPF, data de nascimento e celular</caption>
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Foto
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   ID
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Nome
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   CPF
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Data Nasc.
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Celular
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Ações
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {mockStudents.map(student => <tr key={student.id} className="hover:bg-gray-50">
+              {pageItems.map(student => <tr key={student.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">
                       {student.nome.charAt(0)}
@@ -126,7 +168,7 @@ export function StudentsList() {
                     {student.cpf}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {student.dataNasc}
+                    {new Date(student.dataNasc).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {student.celular}
@@ -148,24 +190,33 @@ export function StudentsList() {
             </tbody>
           </table>
         </div>
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+        <nav className="px-6 py-4 border-t border-gray-200 flex items-center justify-between" aria-label="Paginação">
           <p className="text-sm text-gray-600">
-            Mostrando <span className="font-medium">1</span> a{' '}
-            <span className="font-medium">3</span> de{' '}
-            <span className="font-medium">3</span> resultados
+            Mostrando <span className="font-medium">{total === 0 ? 0 : startIndex + 1}</span> a{' '}
+            <span className="font-medium">{endIndex}</span> de{' '}
+            <span className="font-medium">{total}</span> resultados
           </p>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition-colors disabled:opacity-50" disabled>
+            <button
+              className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={currentPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
               Anterior
             </button>
-            <button className="px-3 py-1 bg-blue-600 text-white rounded">
-              1
-            </button>
-            <button className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition-colors disabled:opacity-50" disabled>
+            <span className="text-sm text-gray-600">
+              Página <span className="font-medium">{currentPage}</span> de{' '}
+              <span className="font-medium">{totalPages}</span>
+            </span>
+            <button
+              className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
               Próximo
             </button>
           </div>
-        </div>
-      </div>
+        </nav>
+      </section>
     </div>;
 }

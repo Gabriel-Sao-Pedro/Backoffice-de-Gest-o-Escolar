@@ -7,6 +7,9 @@ export function Layout() {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
   return <div className="min-h-screen flex flex-col">
+      <a href="#conteudo-principal" className="sr-only focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-blue-600 px-3 py-2 bg-white text-blue-700">
+        Pular para o conteúdo principal
+      </a>
       <header className="bg-blue-600 text-white shadow-md">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -20,7 +23,7 @@ export function Layout() {
               </div>
               <span className="hidden md:inline">Admin</span>
             </div>
-            <button className="p-2 hover:bg-blue-700 rounded-full" onClick={() => { navigate('/login'); }}>
+            <button type="button" className="p-2 hover:bg-blue-700 rounded-full" onClick={() => { navigate('/login'); }} aria-label="Sair e ir para login">
               <LogOutIcon className="w-5 h-5" />
             </button>
           </div>
@@ -28,7 +31,7 @@ export function Layout() {
       </header>
       <div className="flex flex-1">
         <aside className="w-64 bg-gray-50 border-r border-gray-200 hidden md:block">
-          <nav className="p-4 space-y-1">
+          <nav className="p-4 space-y-1" aria-label="Navegação lateral">
             <Link to="/" className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${isActive('/') ? 'bg-blue-100 text-blue-800' : 'text-gray-700 hover:bg-gray-100'}`}>
               <HomeIcon className="w-5 h-5" />
               <span>Dashboard</span>
@@ -55,7 +58,7 @@ export function Layout() {
             </Link>
           </nav>
         </aside>
-        <main className="flex-1 p-6 bg-gray-100">
+        <main id="conteudo-principal" className="flex-1 p-6 bg-gray-100">
           <Outlet />
         </main>
       </div>
