@@ -1,19 +1,32 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SaveIcon, XIcon } from 'lucide-react';
+import { addCourse, addEnrollment, getCourses, getEnrollments, getStudents, removeEnrollmentByStudentCourse, updateCourse } from '../../services/db';
 export function CourseForm() {
   const navigate = useNavigate();
   const {
     id
   } = useParams();
   const isEditing = !!id;
+  const courseId = isEditing ? Number(id) : null;
+  const existing = useMemo(() => (courseId ? getCourses().find(c => c.id === courseId) : undefined), [courseId]);
   const [formData, setFormData] = useState({
-    codigo: '',
-    nome: '',
-    descricao: '',
-    cargaHoraria: '',
-    status: 'Ativo'
+    codigo: existing?.codigo ?? '',
+    nome: existing?.nome ?? '',
+    descricao: existing?.descricao ?? '',
+    cargaHoraria: existing?.cargaHoraria?.toString() ?? '',
+    status: existing?.status ?? 'Ativo'
   });
+  const allStudents = getStudents();
+  const currentEnrollments = getEnrollments().filter(e => (courseId ? e.courseId === courseId : false));
+  const initiallySelected = new Set(currentEnrollments.map(e => e.studentId));
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set(initiallySelected));
+  const [query, setQuery] = useState('');
+  const filteredStudents = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allStudents;
+    return allStudents.filter(s => s.nome.toLowerCase().includes(q) || s.cpf.includes(q));
+  }, [allStudents, query]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const {
@@ -48,7 +61,37 @@ export function CourseForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      console.log('Salvando curso:', formData);
+      if (isEditing && courseId) {
+        updateCourse(courseId, {
+          codigo: formData.codigo,
+          nome: formData.nome,
+          descricao: formData.descricao,
+          cargaHoraria: Number(formData.cargaHoraria),
+          status: formData.status as 'Ativo' | 'Inativo',
+        });
+        // Sincronizar matrículas
+        const before = new Set(currentEnrollments.map(e => e.studentId));
+        // Remover os que foram desmarcados
+        for (const sid of Array.from(before)) {
+          if (!selectedIds.has(sid)) removeEnrollmentByStudentCourse(sid, courseId);
+        }
+        // Adicionar os novos marcados
+        for (const sid of Array.from(selectedIds)) {
+          if (!before.has(sid)) addEnrollment({ studentId: sid, courseId, dataMatricula: new Date().toISOString().slice(0,10), status: 'Ativa' });
+        }
+      } else {
+        const created = addCourse({
+          codigo: formData.codigo,
+          nome: formData.nome,
+          descricao: formData.descricao,
+          cargaHoraria: Number(formData.cargaHoraria),
+          status: formData.status as 'Ativo' | 'Inativo',
+        });
+        // Criar matrículas para selecionados
+        for (const sid of Array.from(selectedIds)) {
+          addEnrollment({ studentId: sid, courseId: created.id, dataMatricula: new Date().toISOString().slice(0,10), status: 'Ativa' });
+        }
+      }
       navigate('/cursos');
     }
   };
@@ -63,7 +106,7 @@ export function CourseForm() {
           </p>
         </div>
       </div>
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200">
+  <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -108,6 +151,51 @@ export function CourseForm() {
               <option value="Ativo">Ativo</option>
               <option value="Inativo">Inativo</option>
             </select>
+          </div>
+
+          {/* Gestão de alunos no curso */}
+          <div className="border-t border-gray-200 pt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold">Alunos deste curso</h3>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nome ou CPF" className="px-3 py-2 border border-gray-300 rounded" />
+            </div>
+            <div className="max-h-64 overflow-auto border border-gray-200 rounded">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Selecionar</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aluno</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CPF</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredStudents.map(s => {
+                    const checked = selectedIds.has(s.id);
+                    return (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-sm">
+                          <input type="checkbox" checked={checked} onChange={(e) => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(s.id); else next.delete(s.id);
+                              return next;
+                            });
+                          }} />
+                        </td>
+                        <td className="px-4 py-2 text-sm">{s.nome}</td>
+                        <td className="px-4 py-2 text-sm">{s.cpf}</td>
+                      </tr>
+                    );
+                  })}
+                  {filteredStudents.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 text-sm text-gray-500">Nenhum aluno encontrado.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">Marque os alunos que devem estar matriculados neste curso. Ao salvar, as matrículas serão criadas ou removidas conforme necessário.</p>
           </div>
         </div>
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3 rounded-b-lg">

@@ -1,22 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-type LoginProps = {
-  onLogin: () => void;
-};
-
-export function Login({ onLogin }: LoginProps) {
+import { useAuth } from '../contexts/AuthContext';
+export function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [emailSent, setEmailSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onLogin();
-    navigate('/');
+    setError(null);
+    const ok = login({ email: username, password });
+    if (ok) {
+      navigate('/');
+    } else {
+      setError('Credenciais inválidas.');
+    }
   };
 
   const handleForgotSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -42,7 +45,7 @@ export function Login({ onLogin }: LoginProps) {
             <div className="rounded-md shadow-sm -space-y-px">
               <div>
                 <label htmlFor="username" className="sr-only">
-                  Usuário
+                  E-mail
                 </label>
                 <input
                   id="username"
@@ -50,7 +53,7 @@ export function Login({ onLogin }: LoginProps) {
                   type="text"
                   required
                   className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Usuário"
+                  placeholder="E-mail"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
@@ -72,6 +75,12 @@ export function Login({ onLogin }: LoginProps) {
               </div>
             </div>
 
+            {error && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
+                {error}
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -79,6 +88,13 @@ export function Login({ onLogin }: LoginProps) {
                 className="text-sm text-blue-600 hover:text-blue-500"
               >
                 Esqueceu a senha?
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/cadastro')}
+                className="text-sm text-gray-600 hover:text-gray-800"
+              >
+                Criar conta
               </button>
             </div>
 

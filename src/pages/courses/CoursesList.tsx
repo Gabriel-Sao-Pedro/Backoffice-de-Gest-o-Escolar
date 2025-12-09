@@ -24,6 +24,7 @@ export function CoursesList() {
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const pageItems = filtered.slice(startIndex, endIndex);
+  // sem expansão de materiais aqui; usar CourseDetail
   // Reset página ao buscar
   useEffect(() => {
     setPage(1);
@@ -91,8 +92,8 @@ export function CoursesList() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {course.codigo}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {course.nome}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700">
+                    <Link to={`/cursos/${course.id}`}>{course.nome}</Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {course.cargaHoraria}h

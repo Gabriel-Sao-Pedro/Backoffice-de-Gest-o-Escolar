@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { SearchIcon, BellIcon, UserIcon, LogOutIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 export function Navbar() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   return <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
@@ -28,7 +30,7 @@ export function Navbar() {
                   <UserIcon className="w-4 h-4" />
                   <span>Perfil</span>
                 </button>
-                <button onClick={() => navigate('/login')} className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 transition-colors">
+                <button onClick={() => { logout(); navigate('/login'); }} className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 transition-colors">
                   <LogOutIcon className="w-4 h-4" />
                   <span>Sair</span>
                 </button>
