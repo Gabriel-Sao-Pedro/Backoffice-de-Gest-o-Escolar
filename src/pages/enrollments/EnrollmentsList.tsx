@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusIcon, SearchIcon, FilterIcon, Trash2Icon } from 'lucide-react';
-import { getEnrollmentsJoined, initDb } from '../../services/db';
+import { obterMatriculasDetalhadas, matriculasAPI, MatriculaDetalhada, getPeriodoLabel } from '../../services/api';
 
 export function EnrollmentsList() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [enrollments, setEnrollments] = useState(getEnrollmentsJoined());
+  const [enrollments, setEnrollments] = useState<MatriculaDetalhada[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [showFilters, setShowFilters] = useState(false);
@@ -17,27 +19,32 @@ export function EnrollmentsList() {
   const [periodFilter, setPeriodFilter] = useState<string>('');
 
   useEffect(() => {
-    initDb();
-    setEnrollments(getEnrollmentsJoined());
+    const carregarMatriculas = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await obterMatriculasDetalhadas();
+        setEnrollments(data);
+      } catch (err) {
+        console.error('Erro ao carregar matrículas:', err);
+        setError('Erro ao carregar matrículas. Verifique se o backend está rodando.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    carregarMatriculas();
   }, []);
 
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase();
     let list = enrollments.filter(
-      (e) => e.aluno.toLowerCase().includes(q) || e.curso.toLowerCase().includes(q)
+      (e) => (e.aluno_nome?.toLowerCase().includes(q) || e.curso_descricao?.toLowerCase().includes(q))
     );
-    if (statusFilter) {
-      const normalized = statusFilter.toLowerCase();
-      list = list.filter((e) => e.status.toLowerCase() === normalized);
-    }
     if (periodFilter) {
-      // Considera apenas o ano no filtro de período
-      list = list.filter(
-        (e) => new Date(e.dataMatricula).getFullYear().toString() === periodFilter
-      );
+      list = list.filter((e) => e.periodo === periodFilter);
     }
     return list;
-  }, [enrollments, searchTerm, statusFilter, periodFilter]);
+  }, [enrollments, searchTerm, periodFilter]);
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -48,12 +55,49 @@ export function EnrollmentsList() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, statusFilter, periodFilter, pageSize]);
+  }, [searchTerm, periodFilter, pageSize]);
 
   const applyFilters = () => {
-    setStatusFilter(statusDraft);
     setPeriodFilter(periodDraft);
   };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta matrícula?')) {
+      return;
+    }
+    try {
+      await matriculasAPI.deletar(id);
+      setEnrollments(enrollments.filter(e => e.id !== id));
+      alert('Matrícula excluída com sucesso!');
+    } catch (err) {
+      console.error('Erro ao excluir matrícula:', err);
+      alert('Erro ao excluir matrícula.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-600">Carregando matrículas...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-600 mb-2">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -119,23 +163,8 @@ export function EnrollmentsList() {
           {showFilters && (
             <div
               id="enrollments-filters"
-              className="mt-4 p-4 bg-gray-50 rounded-lg grid grid-cols-3 gap-4"
+              className="mt-4 p-4 bg-gray-50 rounded-lg grid grid-cols-2 gap-4"
             >
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Status
-                </label>
-                <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={statusDraft}
-                  onChange={(e) => setStatusDraft(e.target.value)}
-                >
-                  <option value="">Todos</option>
-                  <option value="Ativa">Ativa</option>
-                  <option value="Cancelada">Cancelada</option>
-                  <option value="Concluída">Concluída</option>
-                </select>
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Período
@@ -146,8 +175,9 @@ export function EnrollmentsList() {
                   onChange={(e) => setPeriodDraft(e.target.value)}
                 >
                   <option value="">Todos</option>
-                  <option value="2024">2024</option>
-                  <option value="2023">2023</option>
+                  <option value="M">Matutino</option>
+                  <option value="V">Vespertino</option>
+                  <option value="N">Noturno</option>
                 </select>
               </div>
               <div className="flex items-end">
@@ -192,7 +222,7 @@ export function EnrollmentsList() {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Data de Matrícula
+                  Período
                 </th>
                 <th
                   scope="col"
@@ -215,31 +245,24 @@ export function EnrollmentsList() {
                     {enrollment.id}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {enrollment.aluno}
+                    {enrollment.aluno_nome || `Aluno ID ${enrollment.aluno}`}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {enrollment.curso}
+                    {enrollment.curso_descricao || `Curso ID ${enrollment.curso}`}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(enrollment.dataMatricula).toLocaleDateString('pt-BR')}
+                    {getPeriodoLabel(enrollment.periodo)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                        enrollment.status === 'Ativa'
-                          ? 'bg-green-100 text-green-800'
-                          : enrollment.status === 'Cancelada'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {enrollment.status}
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Ativa
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
+                      onClick={() => handleDelete(enrollment.id)}
                       className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                      aria-label="Cancelar matrícula"
+                      aria-label="Excluir matrícula"
                     >
                       <Trash2Icon className="w-4 h-4" />
                     </button>

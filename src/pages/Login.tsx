@@ -1,31 +1,32 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+
 export function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'forgot'>('login');
-  const [email, setEmail] = useState('');
-  const [emailSent, setEmailSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const ok = login({ email: username, password });
-    if (ok) {
-      navigate('/');
-    } else {
-      setError('Credenciais inválidas.');
-    }
-  };
+    setLoading(true);
 
-  const handleForgotSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // Simulação de envio de link de recuperação
-    setEmailSent(true);
+    try {
+      const success = await login(username, password);
+      if (success) {
+        navigate('/');
+      } else {
+        setError('Credenciais inválidas. Verifique seu usuário e senha.');
+      }
+    } catch (err) {
+      setError('Erro ao fazer login. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -36,122 +37,68 @@ export function Login() {
             Sistema de Gestão Escolar
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            {mode === 'login' ? 'Faça login para acessar o sistema' : 'Recupere o acesso à sua conta'}
+            Faça login para acessar o sistema
           </p>
         </div>
 
-        {mode === 'login' ? (
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            <div className="rounded-md shadow-sm -space-y-px">
-              <div>
-                <label htmlFor="username" className="sr-only">
-                  E-mail
-                </label>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="E-mail"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="sr-only">
-                  Senha
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Senha"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
-                {error}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setMode('forgot')}
-                className="text-sm text-blue-600 hover:text-blue-500"
-              >
-                Esqueceu a senha?
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/cadastro')}
-                className="text-sm text-gray-600 hover:text-gray-800"
-              >
-                Criar conta
-              </button>
-            </div>
-
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm -space-y-px">
             <div>
-              <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Entrar
-              </button>
+              <label htmlFor="username" className="sr-only">
+                Usuário
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                disabled={loading}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm disabled:bg-gray-100"
+                placeholder="Usuário"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
             </div>
-          </form>
-        ) : (
-          <form className="mt-8 space-y-6" onSubmit={handleForgotSubmit}>
-            <div className="rounded-md shadow-sm">
-              {!emailSent ? (
-                <div>
-                  <label htmlFor="email" className="sr-only">
-                    E-mail
-                  </label>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                    placeholder="Seu e-mail cadastrado"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md p-3">
-                  Enviamos um link de recuperação para {email}. Verifique sua caixa de entrada.
-                </div>
-              )}
+            <div>
+              <label htmlFor="password" className="sr-only">
+                Senha
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                disabled={loading}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm disabled:bg-gray-100"
+                placeholder="Senha"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
+          </div>
 
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setMode('login')}
-                className="text-sm text-gray-600 hover:text-gray-800"
-              >
-                Voltar ao login
-              </button>
-              {!emailSent && (
-                <button
-                  type="submit"
-                  className="inline-flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Enviar link
-                </button>
-              )}
+          {error && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
+              {error}
             </div>
-          </form>
-        )}
+          )}
+
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+          </div>
+
+          <div className="text-center text-sm text-gray-600">
+            <p>Credenciais de teste:</p>
+            <p className="font-mono">Usuário: <strong>admin</strong></p>
+            <p className="font-mono">Senha: <strong>admin123</strong></p>
+          </div>
+        </form>
       </div>
     </div>
   );

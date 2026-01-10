@@ -1,64 +1,63 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Role as UserRole, findUserByEmailAndPassword, seedDefaultUsers } from '../services/auth';
+import { authAPI } from '../services/api';
 
-type Role = UserRole;
+type Role = 'admin' | 'secretaria' | 'professor' | 'recepcionista' | 'aluno';
 
 type AuthContextType = {
   isAuthenticated: boolean;
   role: Role;
-  login: (opts?: { role?: Role; email?: string; password?: string }) => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
+  loading: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_KEY = 'auth.session.v1';
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [role, setRole] = useState<Role>('admin');
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    try {
-  // Garantir usuários padrão
-  seedDefaultUsers();
-      const raw = localStorage.getItem(AUTH_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { isAuthenticated: boolean; role: Role };
-        setIsAuthenticated(!!parsed.isAuthenticated);
-        setRole(parsed.role ?? 'admin');
-      }
-    } catch {
-      // ignore
+    // Verificar se há token ao carregar
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      setIsAuthenticated(true);
+      // Aqui você pode decodificar o token para obter a role, se necessário
     }
+    setLoading(false);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem(AUTH_KEY, JSON.stringify({ isAuthenticated, role }));
-  }, [isAuthenticated, role]);
 
   const value = useMemo<AuthContextType>(
     () => ({
       isAuthenticated,
       role,
-      login: (opts) => {
-        if (opts?.email && opts?.password) {
-          const user = findUserByEmailAndPassword(opts.email, opts.password);
-          if (!user) return false;
+      loading,
+      login: async (username: string, password: string): Promise<boolean> => {
+        try {
+          const response = await authAPI.login(username, password);
+          
+          // Salvar tokens
+          localStorage.setItem('access_token', response.access);
+          localStorage.setItem('refresh_token', response.refresh);
+          
+          // Atualizar estado
           setIsAuthenticated(true);
-          setRole(user.role);
+          setRole('admin'); // Você pode extrair a role do token ou do response
+          
           return true;
+        } catch (error) {
+          console.error('Erro no login:', error);
+          return false;
         }
-        // fallback para login sem credenciais (mantém comportamento antigo)
-        setIsAuthenticated(true);
-        if (opts?.role) setRole(opts.role);
-        return true;
       },
       logout: () => {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
         setIsAuthenticated(false);
       },
     }),
-    [isAuthenticated, role]
+    [isAuthenticated, role, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

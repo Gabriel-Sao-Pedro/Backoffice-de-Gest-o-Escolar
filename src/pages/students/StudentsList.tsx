@@ -1,39 +1,59 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, EditIcon, Trash2Icon, DownloadIcon } from 'lucide-react';
-import { getStudents, initDb, getCourses, getEnrollments } from '../../services/db';
+import { alunosAPI, cursosAPI, matriculasAPI, Aluno, Curso } from '../../services/api';
+
 export function StudentsList() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [students, setStudents] = useState(getStudents());
-  const [courses, setCourses] = useState(getCourses());
+  const [students, setStudents] = useState<Aluno[]>([]);
+  const [courses, setCourses] = useState<Curso[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   // Filtros
   const [courseDraft, setCourseDraft] = useState<string>('');
   const [courseFilter, setCourseFilter] = useState<string>('');
+  
+  const formatarCPF = (cpf: string): string => {
+    if (!cpf) return '-';
+    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  };
+
+  const formatarCelular = (celular: string): string => {
+    if (!celular || celular.trim() === '') return '-';
+    return celular.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  };
+  
   useEffect(() => {
-    initDb();
-    setStudents(getStudents());
-    setCourses(getCourses());
+    const carregarDados = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [alunosData, cursosData] = await Promise.all([
+          alunosAPI.listar('v2'),
+          cursosAPI.listar(),
+        ]);
+        setStudents(alunosData);
+        setCourses(cursosData);
+      } catch (err) {
+        console.error('Erro ao carregar dados:', err);
+        setError('Erro ao carregar dados. Verifique se o backend está rodando.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    carregarDados();
   }, []);
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase();
     let list = students.filter((s) =>
       s.nome.toLowerCase().includes(q) || s.cpf.toLowerCase().includes(q)
     );
-    if (courseFilter) {
-      const cId = Number(courseFilter);
-      if (!Number.isNaN(cId)) {
-        const allowed = new Set(
-          getEnrollments()
-            .filter((e) => e.courseId === cId && e.status !== 'Cancelada')
-            .map((e) => e.studentId)
-        );
-        list = list.filter((s) => allowed.has(s.id));
-      }
-    }
+    // Filtro por curso será implementado quando tivermos os dados de matrícula
+    // Por enquanto, apenas filtragem simples por nome e CPF
     return list;
-  }, [students, searchTerm, courseFilter]);
+  }, [students, searchTerm]);
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -47,6 +67,45 @@ export function StudentsList() {
     setCourseFilter(courseDraft);
   };
   const [showFilters, setShowFilters] = useState(false);
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Tem certeza que deseja excluir este aluno? As matrículas associadas também serão removidas.')) {
+      return;
+    }
+    try {
+      await alunosAPI.deletar(id);
+      setStudents(students.filter(s => s.id !== id));
+      alert('Aluno e suas matrículas foram excluídos com sucesso!');
+    } catch (err) {
+      console.error('Erro ao excluir aluno:', err);
+      alert('Erro ao excluir aluno.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-600">Carregando alunos...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-600 mb-2">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return <div className="space-y-6">
       <section className="flex items-center justify-between" aria-labelledby="students-heading">
         <div>
@@ -100,7 +159,7 @@ export function StudentsList() {
                   <option value="">Todos os cursos</option>
                   {courses.map((c) => (
                     <option key={c.id} value={String(c.id)}>
-                      {c.nome}
+                      {c.descricao}
                     </option>
                   ))}
                 </select>
@@ -165,13 +224,13 @@ export function StudentsList() {
                     {student.nome}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {student.cpf}
+                    {formatarCPF(student.cpf)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(student.dataNasc).toLocaleDateString('pt-BR')}
+                    {new Date(student.data_nascimento).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {student.celular}
+                    {formatarCelular(student.celular)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center gap-2">
@@ -181,7 +240,11 @@ export function StudentsList() {
                       <Link to={`/alunos/${student.id}/editar`} className="p-2 text-gray-600 hover:bg-gray-50 rounded transition-colors" aria-label="Editar aluno">
                         <EditIcon className="w-4 h-4" />
                       </Link>
-                      <button className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors" aria-label="Excluir aluno">
+                      <button 
+                        onClick={() => handleDelete(student.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors" 
+                        aria-label="Excluir aluno"
+                      >
                         <Trash2Icon className="w-4 h-4" />
                       </button>
                     </div>

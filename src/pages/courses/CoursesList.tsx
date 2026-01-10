@@ -1,20 +1,58 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusIcon, SearchIcon, EditIcon, Trash2Icon, UsersIcon } from 'lucide-react';
-import { getCourses, getCourseStudentCount, initDb } from '../../services/db';
+import { cursosAPI, Curso, getNivelLabel, obterMatriculasDetalhadas, MatriculaDetalhada } from '../../services/api';
+
 export function CoursesList() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [courses, setCourses] = useState(getCourses());
+  const [courses, setCourses] = useState<Curso[]>([]);
+  const [matriculas, setMatriculas] = useState<MatriculaDetalhada[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  
   useEffect(() => {
-    initDb();
-    setCourses(getCourses());
+    const carregarDados = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [cursosData, matriculasData] = await Promise.all([
+          cursosAPI.listar(),
+          obterMatriculasDetalhadas()
+        ]);
+        setCourses(cursosData);
+        setMatriculas(matriculasData);
+      } catch (err) {
+        console.error('Erro ao carregar dados:', err);
+        setError('Erro ao carregar dados. Verifique se o backend está rodando.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    carregarDados();
   }, []);
+
+  // Contar alunos por curso
+  const alunosPorCurso = useMemo(() => {
+    const contador: { [key: number]: Set<number> } = {};
+    matriculas.forEach((m) => {
+      if (!contador[m.curso]) {
+        contador[m.curso] = new Set();
+      }
+      contador[m.curso].add(m.aluno);
+    });
+    // Converter Sets para contagem
+    const resultado: { [key: number]: number } = {};
+    Object.keys(contador).forEach((cursoId) => {
+      resultado[Number(cursoId)] = contador[Number(cursoId)].size;
+    });
+    return resultado;
+  }, [matriculas]);
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase();
     const list = courses.filter((c) =>
-      c.nome.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q)
+      c.descricao.toLowerCase().includes(q) || c.codigo_curso.toLowerCase().includes(q)
     );
     return list;
   }, [courses, searchTerm]);
@@ -24,11 +62,54 @@ export function CoursesList() {
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const pageItems = filtered.slice(startIndex, endIndex);
-  // sem expansão de materiais aqui; usar CourseDetail
-  // Reset página ao buscar
   useEffect(() => {
     setPage(1);
   }, [searchTerm, pageSize]);
+
+  const handleDelete = async (id: number, descricao: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o curso "${descricao}"? As matrículas associadas também serão removidas.`)) {
+      return;
+    }
+    try {
+      await cursosAPI.deletar(id);
+      // Remover o curso da lista
+      setCourses(courses.filter(c => c.id !== id));
+      
+      // Recarregar as matrículas da API para garantir sincronização
+      const novasMatriculas = await obterMatriculasDetalhadas();
+      setMatriculas(novasMatriculas);
+      
+      alert('Curso e suas matrículas foram excluídos com sucesso!');
+    } catch (err) {
+      console.error('Erro ao excluir curso:', err);
+      alert('Erro ao excluir curso.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-600">Carregando cursos...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-600 mb-2">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return <div className="space-y-6">
     <section className="flex items-center justify-between" aria-labelledby="courses-heading">
         <div>
@@ -74,7 +155,7 @@ export function CoursesList() {
                   Nome do Curso
                 </th>
         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Carga Horária
+                  Nível
                 </th>
         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Alunos
@@ -90,23 +171,23 @@ export function CoursesList() {
             <tbody className="bg-white divide-y divide-gray-200">
               {pageItems.map(course => <tr key={course.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {course.codigo}
+                    {course.codigo_curso}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700">
-                    <Link to={`/cursos/${course.id}`}>{course.nome}</Link>
+                    <Link to={`/cursos/${course.id}`}>{course.descricao}</Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {course.cargaHoraria}h
+                    {getNivelLabel(course.nivel)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2 text-sm text-gray-900">
                       <UsersIcon className="w-4 h-4 text-gray-400" />
-                      {getCourseStudentCount(course.id)}
+                      {alunosPorCurso[course.id] || 0}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${course.status === 'Ativo' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                      {course.status}
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Ativo
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -114,7 +195,11 @@ export function CoursesList() {
                       <Link to={`/cursos/${course.id}/editar`} className="p-2 text-gray-600 hover:bg-gray-50 rounded transition-colors" aria-label="Editar curso">
                         <EditIcon className="w-4 h-4" />
                       </Link>
-                      <button className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors" aria-label="Excluir curso">
+                      <button 
+                        onClick={() => handleDelete(course.id, course.descricao)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors" 
+                        aria-label="Excluir curso"
+                      >
                         <Trash2Icon className="w-4 h-4" />
                       </button>
                     </div>
